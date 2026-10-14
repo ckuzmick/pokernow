@@ -35,6 +35,19 @@
   .card { width: 40px; height: 56px; background: #fff; color: #111; border-radius: 5px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; font-weight: 700; font-size: 17px; line-height: 1; box-shadow: 0 2px 4px #0006; }
   .card.red { color: #c62828; }
+  .card .suit { font-size: 1.45em; margin-top: 1px; }
+  .card.reveal { animation: reveal .35s ease-out; }
+  @keyframes reveal { from { transform: rotateY(90deg) scale(.9); opacity: .3; } to { transform: none; opacity: 1; } }
+  #ledger { position: fixed; inset: 0; background: #000a; display: none; place-items: center; z-index: 5; }
+  #ledger .sheet { background: var(--panel); border-radius: 10px; padding: 18px 20px; width: min(560px, calc(100% - 32px)); max-height: 80vh; overflow: auto; }
+  #ledger table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  #ledger th, #ledger td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #333c45; }
+  #ledger th:first-child, #ledger td:first-child { text-align: left; }
+  #ledger th { color: var(--muted); font-weight: 500; }
+  #ledger tfoot td { font-weight: 700; border-bottom: 0; }
+  .pos { color: #6fd08c; } .neg { color: #ff7b7b; }
+  header label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  header input[type=number] { width: 90px; }
   .card.back { background: repeating-linear-gradient(45deg, #b03030, #b03030 4px, #8e2222 4px, #8e2222 8px); border: 2px solid #fff; }
   .card.slot { background: #0002; box-shadow: none; border: 1px dashed #fff3; }
   .seat { position: absolute; transform: translate(-50%, -50%); width: 130px; text-align: center; }
@@ -86,6 +99,9 @@
   <header>
     <span class="brand">♠ Poker Later</span>
     <input id="name" placeholder="Your name" maxlength="16">
+    <label>Chips <input id="buyin" type="number" min="1" value="1000"></label>
+    <button id="addBtn" style="display:none">Add chips</button>
+    <button id="ledgerBtn">Ledger</button>
     <button id="copy">Copy invite link</button>
     <button id="startBtn" class="primary" style="display:none">Start game</button>
     <button id="standBtn" style="display:none">Stand up</button>
@@ -99,6 +115,13 @@
   <div id="log"></div>
 </div>
 <div id="toast"></div>
+<div id="ledger"><div class="sheet">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <strong style="font-size:16px">Ledger</strong><button id="ledgerClose">Close</button>
+  </div>
+  <table><thead><tr><th>Player</th><th>Buy-in</th><th>Buy-out</th><th>Stack</th><th>Net</th></tr></thead>
+  <tbody></tbody><tfoot></tfoot></table>
+</div></div>
 
 <script>
 const roomId = location.pathname.match(/^\/g\/([\w-]+)/)?.[1];
@@ -137,6 +160,27 @@ function init() {
   };
   document.getElementById('startBtn').onclick = () => send({ type: 'start' });
   document.getElementById('standBtn').onclick = () => send({ type: 'stand' });
+  const buyinInput = document.getElementById('buyin');
+  buyinInput.value = localStorage.getItem('buyin') || 1000;
+  buyinInput.oninput = () => localStorage.setItem('buyin', buyinInput.value);
+  document.getElementById('addBtn').onclick = () => send({ type: 'addChips', amount: buyinInput.value });
+  const ledgerEl = document.getElementById('ledger');
+  document.getElementById('ledgerBtn').onclick = () => { ledgerEl.style.display = 'grid'; renderLedger(); };
+  document.getElementById('ledgerClose').onclick = () => ledgerEl.style.display = 'none';
+  ledgerEl.onclick = (e) => { if (e.target === ledgerEl) ledgerEl.style.display = 'none'; };
+
+  function renderLedger() {
+    if (!state || ledgerEl.style.display !== 'grid') return;
+    const fmt = (n) => `<span class="${n > 0 ? 'pos' : n < 0 ? 'neg' : ''}">${n > 0 ? '+' : ''}${n}</span>`;
+    const rows = state.ledger.map((e) => ({ ...e, net: e.buyOut + e.stack - e.buyIn })).sort((a, b) => b.net - a.net);
+    ledgerEl.querySelector('tbody').innerHTML = rows.map((e) => `<tr>
+      <td>${esc(e.name)}${e.isYou ? ' (you)' : ''}${e.seated ? '' : ' <span style="color:var(--muted)">· left</span>'}</td>
+      <td>${e.buyIn}</td><td>${e.buyOut}</td><td>${e.seated ? e.stack : '—'}</td><td>${fmt(e.net)}</td></tr>`).join('')
+      || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Nobody has bought in yet</td></tr>';
+    const sum = (k) => rows.reduce((t, e) => t + e[k], 0);
+    ledgerEl.querySelector('tfoot').innerHTML = rows.length
+      ? `<tr><td>Total</td><td>${sum('buyIn')}</td><td>${sum('buyOut')}</td><td>${sum('stack')}</td><td></td></tr>` : '';
+  }
 
   let toastTimer;
   function toast(msg, bg) {
@@ -149,7 +193,7 @@ function init() {
   function cardEl(c, cls = '') {
     if (!c) return `<div class="card ${cls}"></div>`;
     const r = c[0] === 'T' ? '10' : c[0];
-    return `<div class="card ${'hd'.includes(c[1]) ? 'red' : ''}"><span>${r}</span><span>${SUIT[c[1]]}</span></div>`;
+    return `<div class="card ${'hd'.includes(c[1]) ? 'red' : ''} ${cls}"><span>${r}</span><span class="suit">${SUIT[c[1]]}</span></div>`;
   }
   const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
@@ -179,7 +223,7 @@ function init() {
           el.querySelector('button').onclick = () => {
             const name = nameInput.value.trim();
             if (!name) { toast('Enter your name first'); nameInput.focus(); return; }
-            send({ type: 'sit', seat: i, name });
+            send({ type: 'sit', seat: i, name, amount: buyinInput.value });
           };
         }
         table.appendChild(el);
@@ -204,8 +248,7 @@ function init() {
       table.appendChild(el);
     });
 
-    const board = s.board.map((c) => cardEl(c)).join('') + cardEl(null, 'slot').repeat(s.inHand || s.board.length ? 5 - s.board.length : 0);
-    document.getElementById('board').innerHTML = board;
+    renderBoard();
     document.getElementById('pot').textContent = s.pot ? `Pot: ${s.pot}` : '';
     const seated = s.seats.filter(Boolean).length;
     document.getElementById('status').textContent =
@@ -214,6 +257,8 @@ function init() {
 
     document.getElementById('startBtn').style.display = s.isHost && !s.started ? '' : 'none';
     document.getElementById('standBtn').style.display = me ? '' : 'none';
+    document.getElementById('addBtn').style.display = me && !(s.inHand && !me.folded) ? '' : 'none';
+    renderLedger();
 
     renderActions(s, me);
 
@@ -221,6 +266,21 @@ function init() {
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
     log.innerHTML = s.log.map((l) => `<div class="${l.startsWith('—') ? 'hand' : ''}">${esc(l)}</div>`).join('');
     if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+
+  // board cards flip in one at a time, even when the flop lands all at once
+  let shown = null, revealTimer = null;
+  function renderBoard() {
+    const s = state;
+    if (shown === null || s.board.length < shown) shown = s.board.length; // first load or new hand
+    if (s.board.length > shown && !revealTimer) {
+      revealTimer = setTimeout(() => { revealTimer = null; shown++; renderBoard(); }, 650);
+    }
+    const justShown = renderBoard.prev !== undefined && shown > renderBoard.prev ? shown - 1 : -1;
+    renderBoard.prev = shown;
+    const slots = s.inHand || s.board.length ? 5 - shown : 0;
+    document.getElementById('board').innerHTML =
+      s.board.slice(0, shown).map((c, k) => cardEl(c, k === justShown ? 'reveal' : '')).join('') + cardEl(null, 'slot').repeat(slots);
   }
 
   let lastActionKey = '';
@@ -232,8 +292,7 @@ function init() {
     bar.innerHTML = '';
     if (!me) { bar.innerHTML = `<span style="color:var(--muted)">Pick an empty seat to join</span>`; return; }
     if (me.stack === 0 && !s.inHand) {
-      bar.innerHTML = `<button class="primary">Rebuy</button>`;
-      bar.firstChild.onclick = () => send({ type: 'rebuy' });
+      bar.innerHTML = `<span style="color:var(--muted)">You're out of chips. Set an amount and hit <b>Add chips</b> to keep playing.</span>`;
       return;
     }
     if (s.toAct !== s.you) {

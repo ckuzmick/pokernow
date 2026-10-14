@@ -55,9 +55,9 @@ wss.on('connection', (ws, req) => {
     try { msg = JSON.parse(raw); } catch { return; }
     let err = null;
     switch (msg.type) {
-      case 'sit': err = game.sit(Number(msg.seat), pid, String(msg.name || 'Player').slice(0, 16)); break;
+      case 'sit': err = game.sit(Number(msg.seat), pid, String(msg.name || 'Player').slice(0, 16), msg.amount); break;
       case 'stand': game.stand(pid); break;
-      case 'rebuy': game.rebuy(pid); break;
+      case 'addChips': err = game.addChips(pid, msg.amount); break;
       case 'start': if (room.host === pid) game.start(); break;
       case 'act': err = game.act(pid, msg.action, msg.amount); break;
     }

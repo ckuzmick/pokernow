@@ -64,7 +64,7 @@ export function bestHand(cards) {
 
 // ---- game
 export class Game {
-  constructor({ startingStack = 1000, sb = 10, bb = 20 } = {}) {
+  constructor({ startingStack = 1000, sb = 10, bb = 20, runoutDelay = 2200 } = {}) {
     this.seats = Array(SEATS).fill(null);
     this.startingStack = startingStack;
     this.sb = sb;
@@ -78,6 +78,16 @@ export class Game {
     this.onChange = () => {};
     this.nextHandTimer = null;
     this.started = false;
+    this.runoutDelay = runoutDelay; // ms between streets when everyone is all-in
+    this.runoutTimer = null;
+    this.ledger = new Map(); // id -> { name, buyIn, buyOut }
+  }
+
+  addBuyIn(id, name, amt) {
+    const e = this.ledger.get(id) || { name, buyIn: 0, buyOut: 0 };
+    e.name = name;
+    e.buyIn += amt;
+    this.ledger.set(id, e);
   }
 
   say(msg) {
@@ -85,14 +95,18 @@ export class Game {
     if (this.log.length > 100) this.log.shift();
   }
 
-  sit(seat, id, name) {
+  sit(seat, id, name, amount) {
     if (seat < 0 || seat >= SEATS || this.seats[seat]) return 'Seat taken';
-    if (this.seats.some(p => p && p.id === id)) return 'Already seated';
+    if (this.seats.some(p => p && p.id === id && !p.leaving)) return 'Already seated';
+    if (this.seats.some(p => p && p.id === id)) return 'You are leaving this hand, sit again after it ends';
+    const amt = Math.floor(Number(amount));
+    if (!(amt > 0 && amt <= 1e9)) return 'Enter a valid buy-in';
     this.seats[seat] = {
-      id, name, stack: this.startingStack, cards: [], bet: 0, total: 0,
+      id, name, stack: amt, cards: [], bet: 0, total: 0,
       folded: true, allIn: false, acted: false, connected: true, leaving: false,
     };
-    this.say(`${name} sits in seat ${seat + 1} with ${this.startingStack}`);
+    this.addBuyIn(id, name, amt);
+    this.say(`${name} sits in seat ${seat + 1} with ${amt}`);
     this.maybeStart();
   }
 
@@ -100,13 +114,24 @@ export class Game {
     const i = this.seatOf(id);
     if (i < 0) return;
     const p = this.seats[i];
+    if (p.leaving) return;
     this.say(`${p.name} stands up`);
     if (this.inHand && !p.folded) {
-      if (this.toAct === i) this.act(id, 'fold');
-      else { p.folded = true; this.say(`${p.name} folds`); this.checkEnd(); }
+      p.folded = true;
+      p.foldedAt = ++this.foldCount;
+      this.say(`${p.name} folds`);
+      if (this.toAct === i) this.advance();
+      else this.checkEnd();
     }
+    // a mid-hand leaver can still win an orphaned side pot, so cash out when the hand ends
     if (this.inHand) p.leaving = true;
-    else this.seats[i] = null;
+    else this.cashOut(i);
+  }
+
+  cashOut(i) {
+    const p = this.seats[i];
+    this.ledger.get(p.id).buyOut += p.stack;
+    this.seats[i] = null;
   }
 
   setConnected(id, connected) {
@@ -121,11 +146,15 @@ export class Game {
     this.maybeStart();
   }
 
-  rebuy(id) {
+  addChips(id, amount) {
     const p = this.seats[this.seatOf(id)];
-    if (!p || p.stack > 0 || (this.inHand && !p.folded)) return;
-    p.stack = this.startingStack;
-    this.say(`${p.name} rebuys for ${this.startingStack}`);
+    if (!p || p.leaving) return 'Not seated';
+    if (this.inHand && !p.folded) return 'Wait until you are out of the hand';
+    const amt = Math.floor(Number(amount));
+    if (!(amt > 0 && amt <= 1e9)) return 'Enter a valid amount';
+    p.stack += amt;
+    this.addBuyIn(id, p.name, amt);
+    this.say(`${p.name} adds ${amt} chips`);
     this.maybeStart();
   }
 
@@ -149,16 +178,15 @@ export class Game {
 
   startHand() {
     if (this.inHand || !this.ready()) return;
-    // clear leavers
-    this.seats = this.seats.map(p => (p && p.leaving ? null : p));
     this.handNo++;
     this.inHand = true;
     this.showdown = null;
     this.winners = [];
     this.board = [];
+    this.foldCount = 0;
     this.deck = newDeck();
     for (const p of this.seats) if (p) {
-      Object.assign(p, { cards: [], bet: 0, total: 0, acted: false, allIn: false, folded: p.stack <= 0 });
+      Object.assign(p, { cards: [], bet: 0, total: 0, acted: false, allIn: false, folded: p.stack <= 0, foldedAt: 0 });
     }
     const live = (p) => !p.folded;
     this.dealer = this.nextSeat(this.dealer, live);
@@ -198,8 +226,10 @@ export class Game {
     const toCall = this.currentBet - p.bet;
     amount = Math.floor(Number(amount) || 0);
 
+    if (action === 'fold' && toCall <= 0) action = 'check'; // never fold for free
     if (action === 'fold') {
       p.folded = true;
+      p.foldedAt = ++this.foldCount;
       this.say(`${p.name} folds`);
     } else if (action === 'check') {
       if (toCall > 0) return 'Cannot check';
@@ -261,9 +291,21 @@ export class Game {
     this.say(`${this.street[0].toUpperCase() + this.street.slice(1)}: ${this.board.join(' ')}`);
   }
 
+  // deal remaining streets; paced so the table can sweat each card
   runOut() {
-    while (this.street !== 'river') this.nextStreet();
-    this.finish();
+    this.toAct = -1;
+    if (!this.runoutDelay) {
+      while (this.street !== 'river') this.nextStreet();
+      return this.finish();
+    }
+    const step = () => {
+      this.runoutTimer = null;
+      if (!this.inHand) return;
+      if (this.street === 'river') this.finish();
+      else { this.nextStreet(); this.runoutTimer = setTimeout(step, this.runoutDelay); }
+      this.onChange();
+    };
+    this.runoutTimer = setTimeout(step, this.runoutDelay);
   }
 
   // auto-act for disconnected players so the table doesn't stall
@@ -273,6 +315,8 @@ export class Game {
   }
 
   finish() {
+    clearTimeout(this.runoutTimer);
+    this.runoutTimer = null;
     this.toAct = -1;
     const players = this.seats.map((p, i) => p && { p, i }).filter(Boolean);
     const live = players.filter(x => !x.p.folded);
@@ -295,12 +339,14 @@ export class Game {
       for (const lvl of levels) {
         let amt = 0;
         for (const x of players) amt += Math.max(0, Math.min(x.p.total, lvl) - prev);
-        const elig = live.filter(x => x.p.total >= lvl);
+        let elig = live.filter(x => x.p.total >= lvl);
+        // everyone in this side pot folded: it goes to whoever folded last
+        if (!elig.length) elig = [players.filter(x => x.p.total >= lvl).sort((a, b) => b.p.foldedAt - a.p.foldedAt)[0]];
         prev = lvl;
-        if (!amt || !elig.length) continue;
+        if (!amt) continue;
         let best = [];
         for (const x of elig) {
-          const c = best.length ? cmp(x.hand.score, best[0].hand.score) : 1;
+          const c = best.length ? cmp(x.hand?.score ?? [], best[0].hand?.score ?? []) : 1;
           if (c > 0) best = [x]; else if (c === 0) best.push(x);
         }
         // odd chips go to first winner left of the dealer
@@ -321,6 +367,7 @@ export class Game {
     for (const p of this.seats) if (p) { p.bet = 0; }
     for (const p of this.seats) if (p) p.total = 0;
     this.inHand = false;
+    this.seats.forEach((p, i) => p && p.leaving && this.cashOut(i));
     if (this.started && this.ready()) {
       this.nextHandTimer = setTimeout(() => { this.nextHandTimer = null; this.startHand(); this.onChange(); }, 5000);
     }
@@ -347,7 +394,11 @@ export class Game {
       winners: this.inHand ? [] : this.winners || [],
       sb: this.sb, bb: this.bb,
       log: this.log.slice(-40),
-      you: this.seatOf(viewerId),
+      you: this.seats.findIndex(p => p && p.id === viewerId && !p.leaving),
+      ledger: [...this.ledger.entries()].map(([id, e]) => {
+        const p = this.seats.find(q => q && q.id === id && !q.leaving);
+        return { name: e.name, buyIn: e.buyIn, buyOut: e.buyOut, stack: p ? p.stack + p.total : 0, seated: !!p, isYou: id === viewerId };
+      }),
     };
   }
 }
