@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poker Later</title>
+<style>
+  :root {
+    --bg: #14181c; --panel: #1e242a; --text: #e8ecef; --muted: #8a949e;
+    --felt: #1f6b45; --felt-edge: #0f3d27; --accent: #f2c14e; --red: #d64545;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 8px 14px; background: #3a444e; color: var(--text); }
+  button:hover { filter: brightness(1.15); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); color: #222; font-weight: 600; }
+  button.danger { background: var(--red); }
+  input { font: inherit; padding: 7px 9px; border-radius: 6px; border: 1px solid #3a444e; background: #0f1215; color: var(--text); }
+
+  #landing { display: grid; place-items: center; height: 100vh; text-align: center; }
+  #landing h1 { font-size: 42px; margin: 0 0 8px; }
+  #landing p { color: var(--muted); margin: 0 0 24px; }
+
+  #app { display: none; height: 100vh; grid-template-columns: 1fr 280px; grid-template-rows: auto 1fr auto; }
+  header { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: var(--panel); flex-wrap: wrap; }
+  header .brand { font-weight: 700; margin-right: auto; }
+  #tableWrap { position: relative; display: grid; place-items: center; padding: 40px 16px; min-height: 420px; }
+  #table { position: relative; width: min(820px, 92%); aspect-ratio: 2 / 1; border-radius: 999px;
+    background: radial-gradient(ellipse at center, #2a8a5b, var(--felt) 60%); border: 14px solid var(--felt-edge);
+    box-shadow: 0 10px 40px #0008, inset 0 0 40px #0006; }
+  #center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+  #pot { font-weight: 700; color: var(--accent); min-height: 20px; }
+  .cards { display: flex; gap: 4px; }
+  .card { width: 40px; height: 56px; background: #fff; color: #111; border-radius: 5px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; font-weight: 700; font-size: 17px; line-height: 1; box-shadow: 0 2px 4px #0006; }
+  .card.red { color: #c62828; }
+  .card.back { background: repeating-linear-gradient(45deg, #b03030, #b03030 4px, #8e2222 4px, #8e2222 8px); border: 2px solid #fff; }
+  .card.slot { background: #0002; box-shadow: none; border: 1px dashed #fff3; }
+  .seat { position: absolute; transform: translate(-50%, -50%); width: 130px; text-align: center; }
+  .seat .box { background: var(--panel); border: 2px solid #333c45; border-radius: 10px; padding: 6px 8px; position: relative; }
+  .seat.turn .box { border-color: var(--accent); box-shadow: 0 0 14px #f2c14e88; }
+  .seat.winner .box { border-color: #4caf50; box-shadow: 0 0 14px #4caf5088; }
+  .seat.folded { opacity: .45; }
+  .seat.offline .name::after { content: ' (away)'; color: var(--muted); font-weight: 400; }
+  .seat .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seat .stack { color: var(--accent); }
+  .seat .hand { font-size: 11px; color: #9fe3b4; }
+  .seat .cards { justify-content: center; margin-bottom: -10px; position: relative; z-index: 1; }
+  .seat .card { width: 34px; height: 48px; font-size: 15px; }
+  .seat .bet { position: absolute; left: 50%; transform: translateX(-50%); background: #000a; color: var(--accent);
+    padding: 2px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .seat .dealer { position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+    color: #111; font-weight: 800; font-size: 12px; display: grid; place-items: center; }
+  .seat.empty button { background: #0006; border: 1px dashed #fff5; }
+
+  #actions { grid-column: 1; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 12px 16px;
+    background: var(--panel); flex-wrap: wrap; min-height: 62px; }
+  #actions input[type=range] { width: 160px; }
+  #actions input[type=number] { width: 90px; }
+  #log { grid-row: 2 / 4; grid-column: 2; background: #101418; overflow-y: auto; padding: 10px 12px; font-size: 12.5px; color: #c4ccd3; }
+  #log div { padding: 2px 0; border-bottom: 1px solid #1c2126; }
+  #log div.hand { color: var(--accent); margin-top: 6px; }
+  #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: var(--red); padding: 8px 16px;
+    border-radius: 6px; display: none; z-index: 10; }
+
+  @media (max-width: 760px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: auto auto auto 200px; height: auto; }
+    #log { grid-row: auto; grid-column: 1; }
+    .seat { width: 92px; font-size: 12px; }
+    .seat .card { width: 26px; height: 38px; font-size: 12px; }
+    .card { width: 30px; height: 42px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div id="landing">
+  <div>
+    <h1>♠ Poker Later</h1>
+    <p>No sign-up. Create a table, send the link, play Hold'em.</p>
+    <button class="primary" onclick="location.href='/g/' + Math.random().toString(36).slice(2, 9)">Create game</button>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <span class="brand">♠ Poker Later</span>
+    <input id="name" placeholder="Your name" maxlength="16">
+    <button id="copy">Copy invite link</button>
+    <button id="startBtn" class="primary" style="display:none">Start game</button>
+    <button id="standBtn" style="display:none">Stand up</button>
+  </header>
+  <div id="tableWrap">
+    <div id="table">
+      <div id="center"><div id="board" class="cards"></div><div id="pot"></div><div id="status" style="color:#fffa"></div></div>
+    </div>
+  </div>
+  <div id="actions"></div>
+  <div id="log"></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const roomId = location.pathname.match(/^\/g\/([\w-]+)/)?.[1];
+if (!roomId) {
+  document.getElementById('landing').style.display = 'grid';
+} else {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById('app').style.display = 'grid';
+  init();
+}
+
+function init() {
+  let pid = localStorage.getItem('pid');
+  if (!pid) { pid = crypto.randomUUID(); localStorage.setItem('pid', pid); }
+  const nameInput = document.getElementById('name');
+  nameInput.value = localStorage.getItem('name') || '';
+  nameInput.oninput = () => localStorage.setItem('name', nameInput.value);
+
+  let ws, state;
+  const send = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws?room=${roomId}&pid=${pid}`);
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.type === 'state') { state = m.state; render(); }
+      if (m.type === 'error') toast(m.error);
+    };
+    ws.onclose = () => setTimeout(connect, 1000);
+  }
+  connect();
+
+  document.getElementById('copy').onclick = async () => {
+    await navigator.clipboard.writeText(location.href);
+    toast('Link copied', '#3a7d4f');
+  };
+  document.getElementById('startBtn').onclick = () => send({ type: 'start' });
+  document.getElementById('standBtn').onclick = () => send({ type: 'stand' });
+
+  let toastTimer;
+  function toast(msg, bg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.style.background = bg || ''; t.style.display = 'block';
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 2200);
+  }
+
+  const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
+  function cardEl(c, cls = '') {
+    if (!c) return `<div class="card ${cls}"></div>`;
+    const r = c[0] === 'T' ? '10' : c[0];
+    return `<div class="card ${'hd'.includes(c[1]) ? 'red' : ''}"><span>${r}</span><span>${SUIT[c[1]]}</span></div>`;
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+  // 9 seat positions around the oval; index 0 is bottom-center (where you sit)
+  const POS = Array.from({ length: 9 }, (_, k) => {
+    const a = Math.PI / 2 + (k * 2 * Math.PI) / 9;
+    return { x: 50 + 54 * Math.cos(a), y: 50 + 62 * Math.sin(a) };
+  });
+
+  function render() {
+    const s = state;
+    const me = s.you >= 0 ? s.seats[s.you] : null;
+    const offset = s.you >= 0 ? s.you : 0;
+    const table = document.getElementById('table');
+    table.querySelectorAll('.seat').forEach((e) => e.remove());
+
+    s.seats.forEach((p, i) => {
+      const pos = POS[(i - offset + 9) % 9];
+      const el = document.createElement('div');
+      el.className = 'seat';
+      el.style.left = pos.x + '%';
+      el.style.top = pos.y + '%';
+      if (!p) {
+        el.classList.add('empty');
+        if (s.you < 0) {
+          el.innerHTML = `<button>Sit here</button>`;
+          el.querySelector('button').onclick = () => {
+            const name = nameInput.value.trim();
+            if (!name) { toast('Enter your name first'); nameInput.focus(); return; }
+            send({ type: 'sit', seat: i, name });
+          };
+        }
+        table.appendChild(el);
+        return;
+      }
+      if (p.folded && s.inHand) el.classList.add('folded');
+      if (s.toAct === i) el.classList.add('turn');
+      if (s.winners.includes(i)) el.classList.add('winner');
+      if (!p.connected) el.classList.add('offline');
+      const cards = p.cards ? p.cards.map((c) => cardEl(c)).join('') : p.hasCards ? cardEl(null, 'back') + cardEl(null, 'back') : '';
+      // bet chip sits toward the table center
+      const below = pos.y < 50;
+      el.innerHTML = `
+        <div class="cards">${cards}</div>
+        <div class="box">
+          ${s.dealer === i && (s.inHand || s.winners.length) ? '<div class="dealer">D</div>' : ''}
+          <div class="name">${esc(p.name)}${p.isYou ? ' (you)' : ''}</div>
+          <div class="stack">${p.stack}${p.allIn ? ' · ALL IN' : ''}</div>
+          ${p.handName ? `<div class="hand">${p.handName}</div>` : ''}
+        </div>
+        ${p.bet ? `<div class="bet" style="${below ? 'top:calc(100% + 6px)' : 'bottom:calc(100% + 6px)'}">${p.bet}</div>` : ''}`;
+      table.appendChild(el);
+    });
+
+    const board = s.board.map((c) => cardEl(c)).join('') + cardEl(null, 'slot').repeat(s.inHand || s.board.length ? 5 - s.board.length : 0);
+    document.getElementById('board').innerHTML = board;
+    document.getElementById('pot').textContent = s.pot ? `Pot: ${s.pot}` : '';
+    const seated = s.seats.filter(Boolean).length;
+    document.getElementById('status').textContent =
+      !s.started ? (s.isHost ? `Waiting for players · press Start when ready` : 'Waiting for host to start')
+      : !s.inHand && seated < 2 ? 'Waiting for players…' : `Blinds ${s.sb}/${s.bb}`;
+
+    document.getElementById('startBtn').style.display = s.isHost && !s.started ? '' : 'none';
+    document.getElementById('standBtn').style.display = me ? '' : 'none';
+
+    renderActions(s, me);
+
+    const log = document.getElementById('log');
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+    log.innerHTML = s.log.map((l) => `<div class="${l.startsWith('—') ? 'hand' : ''}">${esc(l)}</div>`).join('');
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+
+  let lastActionKey = '';
+  function renderActions(s, me) {
+    const bar = document.getElementById('actions');
+    const key = JSON.stringify([s.toAct, s.you, s.currentBet, me?.stack, me?.bet, s.inHand]);
+    if (key === lastActionKey) return; // don't wipe the raise input while typing
+    lastActionKey = key;
+    bar.innerHTML = '';
+    if (!me) { bar.innerHTML = `<span style="color:var(--muted)">Pick an empty seat to join</span>`; return; }
+    if (me.stack === 0 && !s.inHand) {
+      bar.innerHTML = `<button class="primary">Rebuy</button>`;
+      bar.firstChild.onclick = () => send({ type: 'rebuy' });
+      return;
+    }
+    if (s.toAct !== s.you) {
+      bar.innerHTML = `<span style="color:var(--muted)">${s.inHand ? 'Waiting for others…' : ''}</span>`;
+      return;
+    }
+    const toCall = Math.min(s.currentBet - me.bet, me.stack);
+    const maxTo = me.bet + me.stack;
+    const minTo = Math.min(s.currentBet + s.minRaise, maxTo);
+    const act = (action, amount) => send({ type: 'act', action, amount });
+
+    const fold = btn('Fold', 'danger', () => act('fold'));
+    const cc = toCall > 0 ? btn(`Call ${toCall}`, '', () => act('call')) : btn('Check', '', () => act('check'));
+    bar.append(fold, cc);
+
+    if (maxTo > s.currentBet && !(toCall >= me.stack)) {
+      const range = Object.assign(document.createElement('input'), { type: 'range', min: minTo, max: maxTo, value: minTo, step: 1 });
+      const num = Object.assign(document.createElement('input'), { type: 'number', min: minTo, max: maxTo, value: minTo });
+      range.oninput = () => num.value = range.value;
+      num.oninput = () => range.value = num.value;
+      const set = (v) => { v = Math.max(minTo, Math.min(maxTo, Math.round(v))); range.value = num.value = v; };
+      const potTo = s.currentBet + s.pot + toCall; // pot-sized raise
+      const verb = s.currentBet === 0 ? 'Bet' : 'Raise to';
+      bar.append(
+        btn('½ Pot', '', () => set(s.currentBet + (s.pot + toCall) / 2)),
+        btn('Pot', '', () => set(potTo)),
+        btn('All-in', '', () => set(maxTo)),
+        range, num,
+        btn(verb, 'primary', () => act('raise', num.value)),
+      );
+    }
+  }
+  function btn(label, cls, onclick) {
+    const b = document.createElement('button');
+    b.textContent = label; b.className = cls; b.onclick = onclick;
+    return b;
+  }
+
+  // keyboard shortcuts: f = fold, c = check/call
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || !state || state.toAct !== state.you) return;
+    if (e.key === 'f') send({ type: 'act', action: 'fold' });
+    if (e.key === 'c') send({ type: 'act', action: state.currentBet > state.seats[state.you].bet ? 'call' : 'check' });
+  });
+}
+</script>
+</body>
+</html>
