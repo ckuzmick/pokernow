@@ -4,141 +4,222 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poker Later</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #14181c; --panel: #1e242a; --text: #e8ecef; --muted: #8a949e;
-    --felt: #1f6b45; --felt-edge: #0f3d27; --accent: #f2c14e; --red: #d64545;
+    --bg: #0d0e10; --surface: #17191c; --surface-2: #1f2226; --line: #ffffff14; --line-2: #ffffff26;
+    --text: #ececec; --muted: #8b9098; --faint: #5a5f66;
+    --felt: #13241d; --felt-2: #0f1c17;
+    --win: #5fd28d; --loss: #ff7a7a; --card-red: #d23c3c;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
-  button { font: inherit; cursor: pointer; border: 0; border-radius: 6px; padding: 8px 14px; background: #3a444e; color: var(--text); }
-  button:hover { filter: brightness(1.15); }
-  button:disabled { opacity: .4; cursor: default; }
-  button.primary { background: var(--accent); color: #222; font-weight: 600; }
-  button.danger { background: var(--red); }
-  input { font: inherit; padding: 7px 9px; border-radius: 6px; border: 1px solid #3a444e; background: #0f1215; color: var(--text); }
+  html, body { height: 100%; overflow-x: hidden; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 Inter, system-ui, sans-serif;
+    font-feature-settings: 'tnum'; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; cursor: pointer; border: 0; border-radius: 8px; padding: 9px 16px; background: var(--surface-2);
+    color: var(--text); font-weight: 500; transition: background .15s, opacity .15s; }
+  button:hover { background: #2a2e33; }
+  button.ghost { background: none; color: var(--muted); padding: 7px 10px; }
+  button.ghost:hover { color: var(--text); background: none; }
+  button.primary { background: var(--text); color: #111; }
+  button.primary:hover { background: #fff; }
+  input { font: inherit; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--bg);
+    color: var(--text); outline: none; width: 100%; }
+  input:focus { border-color: #ffffff55; }
+  input::-webkit-inner-spin-button { display: none; }
 
-  #landing { display: grid; place-items: center; height: 100vh; text-align: center; }
-  #landing h1 { font-size: 42px; margin: 0 0 8px; }
-  #landing p { color: var(--muted); margin: 0 0 24px; }
+  /* landing */
+  #landing { display: none; place-items: center; height: 100%; text-align: center; }
+  #landing h1 { font-size: 28px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; }
+  #landing p { color: var(--muted); margin: 0 0 28px; }
 
-  #app { display: none; height: 100vh; grid-template-columns: 1fr 280px; grid-template-rows: auto 1fr auto; }
-  header { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; padding: 10px 16px; background: var(--panel); flex-wrap: wrap; }
-  header .brand { font-weight: 700; margin-right: auto; }
-  #tableWrap { position: relative; display: grid; place-items: center; padding: 40px 16px; min-height: 420px; }
-  #table { position: relative; width: min(820px, 92%); aspect-ratio: 2 / 1; border-radius: 999px;
-    background: radial-gradient(ellipse at center, #2a8a5b, var(--felt) 60%); border: 14px solid var(--felt-edge);
-    box-shadow: 0 10px 40px #0008, inset 0 0 40px #0006; }
-  #center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-  #pot { font-weight: 700; color: var(--accent); min-height: 20px; }
-  .cards { display: flex; gap: 4px; }
-  .card { width: 40px; height: 56px; background: #fff; color: #111; border-radius: 5px; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; font-weight: 700; font-size: 17px; line-height: 1; box-shadow: 0 2px 4px #0006; }
-  .card.red { color: #c62828; }
-  .card .suit { font-size: 1.45em; margin-top: 1px; }
-  .card.reveal { animation: reveal .35s ease-out; }
-  @keyframes reveal { from { transform: rotateY(90deg) scale(.9); opacity: .3; } to { transform: none; opacity: 1; } }
-  #ledger { position: fixed; inset: 0; background: #000a; display: none; place-items: center; z-index: 5; }
-  #ledger .sheet { background: var(--panel); border-radius: 10px; padding: 18px 20px; width: min(560px, calc(100% - 32px)); max-height: 80vh; overflow: auto; }
-  #ledger table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  #ledger th, #ledger td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #333c45; }
-  #ledger th:first-child, #ledger td:first-child { text-align: left; }
-  #ledger th { color: var(--muted); font-weight: 500; }
-  #ledger tfoot td { font-weight: 700; border-bottom: 0; }
-  .pos { color: #6fd08c; } .neg { color: #ff7b7b; }
-  header label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
-  header input[type=number] { width: 90px; }
-  .card.back { background: repeating-linear-gradient(45deg, #b03030, #b03030 4px, #8e2222 4px, #8e2222 8px); border: 2px solid #fff; }
-  .card.slot { background: #0002; box-shadow: none; border: 1px dashed #fff3; }
-  .seat { position: absolute; transform: translate(-50%, -50%); width: 130px; text-align: center; }
-  .seat .box { background: var(--panel); border: 2px solid #333c45; border-radius: 10px; padding: 6px 8px; position: relative; }
-  .seat.turn .box { border-color: var(--accent); box-shadow: 0 0 14px #f2c14e88; }
-  .seat.winner .box { border-color: #4caf50; box-shadow: 0 0 14px #4caf5088; }
-  .seat.folded { opacity: .45; }
-  .seat.offline .name::after { content: ' (away)'; color: var(--muted); font-weight: 400; }
-  .seat .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .seat .stack { color: var(--accent); }
-  .seat .hand { font-size: 11px; color: #9fe3b4; }
-  .seat .cards { justify-content: center; margin-bottom: -10px; position: relative; z-index: 1; }
-  .seat .card { width: 34px; height: 48px; font-size: 15px; }
-  .seat .bet { position: absolute; left: 50%; transform: translateX(-50%); background: #000a; color: var(--accent);
-    padding: 2px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
-  .seat .dealer { position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
-    color: #111; font-weight: 800; font-size: 12px; display: grid; place-items: center; }
-  .seat.empty button { background: #0006; border: 1px dashed #fff5; }
+  /* app shell */
+  #app { display: none; height: 100%; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 2px; padding: 12px 16px; }
+  .brand { font-weight: 600; letter-spacing: -.01em; margin-right: auto; }
+  .brand span { color: var(--muted); font-weight: 400; margin-left: 8px; font-size: 13px; }
 
-  #actions { grid-column: 1; display: flex; gap: 8px; align-items: center; justify-content: center; padding: 12px 16px;
-    background: var(--panel); flex-wrap: wrap; min-height: 62px; }
-  #actions input[type=range] { width: 160px; }
-  #actions input[type=number] { width: 90px; }
-  #log { grid-row: 2 / 4; grid-column: 2; background: #101418; overflow-y: auto; padding: 10px 12px; font-size: 12.5px; color: #c4ccd3; }
-  #log div { padding: 2px 0; border-bottom: 1px solid #1c2126; }
-  #log div.hand { color: var(--accent); margin-top: 6px; }
-  #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: var(--red); padding: 8px 16px;
-    border-radius: 6px; display: none; z-index: 10; }
+  /* table */
+  #stage { flex: 1; display: grid; place-items: center; padding: 48px 16px 24px; min-height: 0; }
+  #table { position: relative; width: min(860px, 100%); aspect-ratio: 2.1 / 1; border-radius: 999px;
+    background: radial-gradient(ellipse at 50% 40%, var(--felt), var(--felt-2) 70%);
+    box-shadow: inset 0 0 0 1px var(--line), inset 0 0 0 10px #0b1511, inset 0 0 0 11px var(--line), 0 30px 80px #0009; }
+  #center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  #pot { font-weight: 600; font-size: 15px; min-height: 21px; }
+  #pot small { color: var(--muted); font-weight: 400; font-size: 12px; margin-right: 6px; text-transform: uppercase; letter-spacing: .08em; }
+  #status { color: var(--muted); font-size: 13px; min-height: 18px; }
 
-  @media (max-width: 760px) {
-    #app { grid-template-columns: 1fr; grid-template-rows: auto auto auto 200px; height: auto; }
-    #log { grid-row: auto; grid-column: 1; }
-    .seat { width: 92px; font-size: 12px; }
-    .seat .card { width: 26px; height: 38px; font-size: 12px; }
-    .card { width: 30px; height: 42px; font-size: 13px; }
+  /* cards */
+  .cards { display: flex; gap: 5px; }
+  .card { width: 46px; height: 64px; background: #f6f5f1; color: #18191b; border-radius: 6px; padding: 4px 6px;
+    display: flex; flex-direction: column; align-items: flex-start; line-height: 1; font-weight: 600; font-size: 17px;
+    box-shadow: 0 2px 6px #0007; }
+  .card .suit { font-size: 25px; align-self: center; margin-top: 4px; }
+  .card.red { color: var(--card-red); }
+  .card.back { background: linear-gradient(135deg, #2a3446, #1b2230); box-shadow: inset 0 0 0 3px #f6f5f1, inset 0 0 0 4px #0002, 0 2px 6px #0007; }
+  .card.slot { background: none; box-shadow: inset 0 0 0 1px #ffffff12; }
+  .card.reveal { animation: reveal .4s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes reveal { from { transform: translateY(-6px) rotateY(80deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* seats */
+  .seat { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 1; }
+  .seat .cards { gap: 3px; margin-bottom: -14px; }
+  .seat .card { width: 38px; height: 53px; font-size: 14px; padding: 3px 5px; }
+  .seat .card .suit { font-size: 20px; margin-top: 3px; }
+  .plate { position: relative; min-width: 112px; padding: 8px 14px 7px; text-align: center; border-radius: 12px;
+    background: #16181bf2; box-shadow: inset 0 0 0 1px var(--line), 0 6px 20px #0006; transition: box-shadow .2s; z-index: 1; }
+  .plate .name { font-size: 12.5px; font-weight: 500; color: var(--muted); white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+  .plate .stack { font-weight: 600; font-size: 15px; }
+  .seat.you .plate .name { color: var(--text); }
+  .seat.turn .plate { box-shadow: inset 0 0 0 1.5px #ffffffcc, 0 0 0 4px #ffffff14, 0 6px 20px #0006; }
+  .seat.winner .plate { box-shadow: inset 0 0 0 1.5px var(--win), 0 0 24px #5fd28d33; }
+  .seat.winner .stack { color: var(--win); }
+  .seat.folded { opacity: .35; }
+  .seat.offline .name::after { content: ' · away'; color: var(--faint); }
+  .tag { margin-top: 6px; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: #000a; color: var(--text); white-space: nowrap; }
+  .tag.allin { color: #ffcf6b; }
+  .dealer { position: absolute; top: 50%; right: -30px; transform: translateY(-50%); width: 20px; height: 20px; border-radius: 50%;
+    background: var(--text); color: #111; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+  .open { width: 38px; height: 38px; padding: 0; border-radius: 50%; background: none; color: var(--faint);
+    box-shadow: inset 0 0 0 1px var(--line-2); font-size: 20px; font-weight: 400; }
+  .open:hover { color: var(--text); background: #ffffff0a; }
+  .bet { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+  .bet::before { content: ''; width: 12px; height: 12px; border-radius: 50%; background: #e8e3d6; box-shadow: inset 0 0 0 2px #b8ad95; }
+
+  /* action dock */
+  #dock { min-height: 92px; display: flex; justify-content: center; align-items: center; padding: 0 16px 24px; }
+  #actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #actions.live { background: var(--surface); padding: 10px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line), 0 10px 40px #0008; }
+  #actions .hint { color: var(--muted); font-size: 13px; }
+  #actions .sep { width: 1px; height: 24px; background: var(--line-2); margin: 0 4px; }
+  #actions button { min-width: 84px; }
+  #actions button.chip { min-width: 0; padding: 7px 10px; font-size: 12.5px; background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line-2); }
+  #actions button.chip:hover { color: var(--text); }
+  #actions .amt { width: 84px; text-align: center; padding: 8px; font-weight: 600; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 150px; height: 4px; padding: 0; border: 0; border-radius: 2px; background: var(--line-2); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--text); cursor: pointer; }
+  input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: var(--text); cursor: pointer; }
+
+  /* dialogs + drawer */
+  dialog { background: var(--surface); color: var(--text); border: 0; border-radius: 16px; padding: 24px; width: min(360px, calc(100% - 32px));
+    box-shadow: inset 0 0 0 1px var(--line), 0 30px 80px #000c; }
+  dialog::backdrop { background: #000a; backdrop-filter: blur(3px); }
+  dialog h2 { margin: 0 0 18px; font-size: 17px; font-weight: 600; }
+  dialog label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+  dialog .field { margin-bottom: 14px; }
+  dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  #ledgerDlg { width: min(560px, calc(100% - 32px)); }
+  #ledgerDlg table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #ledgerDlg th, #ledgerDlg td { padding: 9px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+  #ledgerDlg th:first-child, #ledgerDlg td:first-child { text-align: left; }
+  #ledgerDlg th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  #ledgerDlg tfoot td { border: 0; color: var(--muted); }
+  .pos { color: var(--win); } .neg { color: var(--loss); } .muted { color: var(--muted); }
+  #log { position: fixed; top: 0; right: 0; bottom: 0; width: 300px; background: var(--surface); box-shadow: -1px 0 0 var(--line), -20px 0 60px #0008;
+    transform: translateX(100%); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; z-index: 4; display: flex; flex-direction: column; }
+  #log.open-drawer { transform: none; visibility: visible; transition: transform .25s ease; }
+  #log header { border-bottom: 1px solid var(--line); }
+  #logList { flex: 1; overflow-y: auto; padding: 8px 16px 16px; font-size: 12.5px; color: #c3c7cc; }
+  #logList div { padding: 3px 0; }
+  #logList div.hand { color: var(--muted); font-weight: 600; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  #toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%) translateY(8px); background: var(--text); color: #111;
+    font-weight: 500; padding: 8px 16px; border-radius: 999px; opacity: 0; pointer-events: none; transition: .2s; z-index: 10; }
+  #toast.show { opacity: 1; transform: translateX(-50%); }
+
+  @media (max-width: 680px) {
+    #stage { padding: 56px 16px 16px; }
+    #table { aspect-ratio: 3 / 4.4; width: min(320px, calc(100% - 72px)); }
+    .plate { min-width: 78px; padding: 6px 8px 5px; }
+    .plate .name { font-size: 11px; max-width: 76px; }
+    .plate .stack { font-size: 13px; }
+    .card { width: 36px; height: 50px; font-size: 14px; }
+    .card .suit { font-size: 19px; }
+    .seat .card { width: 28px; height: 40px; font-size: 11px; padding: 2px 4px; }
+    .seat .card .suit { font-size: 15px; margin-top: 2px; }
+    .seat .cards { margin-bottom: -10px; }
+    .dealer { right: -24px; }
+    #log { width: 100%; }
+    .brand span { display: none; }
+    #dock { padding: 0 12px 16px; }
+    #actions.live { display: grid; grid-template-columns: repeat(6, 1fr); width: 100%; max-width: 420px; }
+    #actions.live > * { grid-column: span 2; min-width: 0; width: 100%; }
+    #actions.live .sep { display: none; }
+    #actions.live input[type=range] { grid-column: span 4; align-self: center; }
+    #actions.live .fold { order: 2; } #actions.live .cc { order: 2; } #actions.live .go { order: 2; }
   }
 </style>
 </head>
 <body>
 <div id="landing">
   <div>
-    <h1>♠ Poker Later</h1>
-    <p>No sign-up. Create a table, send the link, play Hold'em.</p>
-    <button class="primary" onclick="location.href='/g/' + Math.random().toString(36).slice(2, 9)">Create game</button>
+    <h1>Poker Later</h1>
+    <p>Texas Hold'em with friends. No sign-up, just send the link.</p>
+    <button class="primary" onclick="location.href='/g/' + Math.random().toString(36).slice(2, 9)">Create a table</button>
   </div>
 </div>
 
 <div id="app">
   <header>
-    <span class="brand">♠ Poker Later</span>
-    <input id="name" placeholder="Your name" maxlength="16">
-    <label>Chips <input id="buyin" type="number" min="1" value="1000"></label>
-    <button id="addBtn" style="display:none">Add chips</button>
-    <button id="ledgerBtn">Ledger</button>
-    <button id="copy">Copy invite link</button>
-    <button id="startBtn" class="primary" style="display:none">Start game</button>
-    <button id="standBtn" style="display:none">Stand up</button>
+    <div class="brand">Poker Later<span id="blinds"></span></div>
+    <button id="startBtn" class="primary" style="display:none;margin-right:6px">Start game</button>
+    <button id="copy" class="ghost">Invite</button>
+    <button id="ledgerBtn" class="ghost">Ledger</button>
+    <button id="logBtn" class="ghost">Log</button>
+    <button id="addBtn" class="ghost" style="display:none">Add chips</button>
+    <button id="standBtn" class="ghost" style="display:none">Leave</button>
   </header>
-  <div id="tableWrap">
+  <div id="stage">
     <div id="table">
-      <div id="center"><div id="board" class="cards"></div><div id="pot"></div><div id="status" style="color:#fffa"></div></div>
+      <div id="center"><div id="board" class="cards"></div><div id="pot"></div><div id="status"></div></div>
     </div>
   </div>
-  <div id="actions"></div>
-  <div id="log"></div>
+  <div id="dock"><div id="actions"></div></div>
 </div>
-<div id="toast"></div>
-<div id="ledger"><div class="sheet">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <strong style="font-size:16px">Ledger</strong><button id="ledgerClose">Close</button>
-  </div>
+
+<aside id="log">
+  <header><div class="brand">Hand log</div><button class="ghost" id="logClose">Close</button></header>
+  <div id="logList"></div>
+</aside>
+
+<dialog id="sitDlg">
+  <form method="dialog">
+    <h2>Take a seat</h2>
+    <div class="field"><label for="name">Name</label><input id="name" maxlength="16" autocomplete="off" required></div>
+    <div class="field"><label for="buyin">Buy-in</label><input id="buyin" type="number" min="1" required></div>
+    <div class="row"><button value="cancel" formnovalidate class="ghost">Cancel</button><button value="ok" class="primary">Sit down</button></div>
+  </form>
+</dialog>
+
+<dialog id="addDlg">
+  <form method="dialog">
+    <h2>Add chips</h2>
+    <div class="field"><label for="addAmt">Amount</label><input id="addAmt" type="number" min="1" required></div>
+    <div class="row"><button value="cancel" formnovalidate class="ghost">Cancel</button><button value="ok" class="primary">Add</button></div>
+  </form>
+</dialog>
+
+<dialog id="ledgerDlg">
+  <h2>Ledger</h2>
   <table><thead><tr><th>Player</th><th>Buy-in</th><th>Buy-out</th><th>Stack</th><th>Net</th></tr></thead>
   <tbody></tbody><tfoot></tfoot></table>
-</div></div>
+  <div class="row"><button class="ghost" onclick="this.closest('dialog').close()">Close</button></div>
+</dialog>
+
+<div id="toast"></div>
 
 <script>
 const roomId = location.pathname.match(/^\/g\/([\w-]+)/)?.[1];
-if (!roomId) {
-  document.getElementById('landing').style.display = 'grid';
-} else {
-  document.getElementById('landing').style.display = 'none';
-  document.getElementById('app').style.display = 'grid';
-  init();
-}
+if (!roomId) document.getElementById('landing').style.display = 'grid';
+else { document.getElementById('app').style.display = 'flex'; init(); }
 
 function init() {
-  let pid = localStorage.getItem('pid');
-  if (!pid) { pid = crypto.randomUUID(); localStorage.setItem('pid', pid); }
-  const nameInput = document.getElementById('name');
-  nameInput.value = localStorage.getItem('name') || '';
-  nameInput.oninput = () => localStorage.setItem('name', nameInput.value);
+  const $ = (id) => document.getElementById(id);
+  const store = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+                  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+  let pid = store.get('pid');
+  if (!pid) { pid = crypto.randomUUID(); store.set('pid', pid); }
 
   let ws, state;
   const send = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
@@ -154,39 +235,54 @@ function init() {
   }
   connect();
 
-  document.getElementById('copy').onclick = async () => {
-    await navigator.clipboard.writeText(location.href);
-    toast('Link copied', '#3a7d4f');
-  };
-  document.getElementById('startBtn').onclick = () => send({ type: 'start' });
-  document.getElementById('standBtn').onclick = () => send({ type: 'stand' });
-  const buyinInput = document.getElementById('buyin');
-  buyinInput.value = localStorage.getItem('buyin') || 1000;
-  buyinInput.oninput = () => localStorage.setItem('buyin', buyinInput.value);
-  document.getElementById('addBtn').onclick = () => send({ type: 'addChips', amount: buyinInput.value });
-  const ledgerEl = document.getElementById('ledger');
-  document.getElementById('ledgerBtn').onclick = () => { ledgerEl.style.display = 'grid'; renderLedger(); };
-  document.getElementById('ledgerClose').onclick = () => ledgerEl.style.display = 'none';
-  ledgerEl.onclick = (e) => { if (e.target === ledgerEl) ledgerEl.style.display = 'none'; };
-
-  function renderLedger() {
-    if (!state || ledgerEl.style.display !== 'grid') return;
-    const fmt = (n) => `<span class="${n > 0 ? 'pos' : n < 0 ? 'neg' : ''}">${n > 0 ? '+' : ''}${n}</span>`;
-    const rows = state.ledger.map((e) => ({ ...e, net: e.buyOut + e.stack - e.buyIn })).sort((a, b) => b.net - a.net);
-    ledgerEl.querySelector('tbody').innerHTML = rows.map((e) => `<tr>
-      <td>${esc(e.name)}${e.isYou ? ' (you)' : ''}${e.seated ? '' : ' <span style="color:var(--muted)">· left</span>'}</td>
-      <td>${e.buyIn}</td><td>${e.buyOut}</td><td>${e.seated ? e.stack : '—'}</td><td>${fmt(e.net)}</td></tr>`).join('')
-      || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">Nobody has bought in yet</td></tr>';
-    const sum = (k) => rows.reduce((t, e) => t + e[k], 0);
-    ledgerEl.querySelector('tfoot').innerHTML = rows.length
-      ? `<tr><td>Total</td><td>${sum('buyIn')}</td><td>${sum('buyOut')}</td><td>${sum('stack')}</td><td></td></tr>` : '';
-  }
+  const fmt = (n) => Number(n).toLocaleString();
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
   let toastTimer;
-  function toast(msg, bg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.style.background = bg || ''; t.style.display = 'block';
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 2200);
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  // header
+  $('copy').onclick = async () => { await navigator.clipboard.writeText(location.href); toast('Invite link copied'); };
+  $('startBtn').onclick = () => send({ type: 'start' });
+  $('standBtn').onclick = () => send({ type: 'stand' });
+  $('logBtn').onclick = () => $('log').classList.add('open-drawer');
+  $('logClose').onclick = () => $('log').classList.remove('open-drawer');
+  $('ledgerBtn').onclick = () => { $('ledgerDlg').showModal(); renderLedger(); };
+
+  // sit + add-chips dialogs
+  let pendingSeat = -1;
+  $('sitDlg').addEventListener('close', () => {
+    if ($('sitDlg').returnValue !== 'ok') return;
+    store.set('name', $('name').value.trim());
+    store.set('buyin', $('buyin').value);
+    send({ type: 'sit', seat: pendingSeat, name: $('name').value.trim(), amount: $('buyin').value });
+  });
+  function openSit(i) {
+    pendingSeat = i;
+    $('name').value = store.get('name', '');
+    $('buyin').value = store.get('buyin', 1000);
+    $('sitDlg').showModal();
+  }
+  $('addBtn').onclick = () => { $('addAmt').value = store.get('buyin', 1000); $('addDlg').showModal(); };
+  $('addDlg').addEventListener('close', () => {
+    if ($('addDlg').returnValue === 'ok') send({ type: 'addChips', amount: $('addAmt').value });
+  });
+
+  function renderLedger() {
+    if (!state || !$('ledgerDlg').open) return;
+    const signed = (n) => `<span class="${n > 0 ? 'pos' : n < 0 ? 'neg' : 'muted'}">${n > 0 ? '+' : ''}${fmt(n)}</span>`;
+    const rows = state.ledger.map((e) => ({ ...e, net: e.buyOut + e.stack - e.buyIn })).sort((a, b) => b.net - a.net);
+    $('ledgerDlg').querySelector('tbody').innerHTML = rows.map((e) => `<tr>
+      <td>${esc(e.name)}${e.isYou ? ' <span class="muted">(you)</span>' : ''}${e.seated ? '' : ' <span class="muted">· left</span>'}</td>
+      <td>${fmt(e.buyIn)}</td><td>${fmt(e.buyOut)}</td><td>${e.seated ? fmt(e.stack) : '<span class="muted">—</span>'}</td><td>${signed(e.net)}</td></tr>`).join('')
+      || '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Nobody has bought in yet</td></tr>';
+    const sum = (k) => fmt(rows.reduce((t, e) => t + e[k], 0));
+    $('ledgerDlg').querySelector('tfoot').innerHTML = rows.length
+      ? `<tr><td>Total</td><td>${sum('buyIn')}</td><td>${sum('buyOut')}</td><td>${sum('stack')}</td><td></td></tr>` : '';
   }
 
   const SUIT = { s: '♠', h: '♥', d: '♦', c: '♣' };
@@ -195,76 +291,78 @@ function init() {
     const r = c[0] === 'T' ? '10' : c[0];
     return `<div class="card ${'hd'.includes(c[1]) ? 'red' : ''} ${cls}"><span>${r}</span><span class="suit">${SUIT[c[1]]}</span></div>`;
   }
-  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
   // 9 seat positions around the oval; index 0 is bottom-center (where you sit)
-  const POS = Array.from({ length: 9 }, (_, k) => {
+  // (pulled inward on phones so the side seats stay on screen)
+  const narrow = matchMedia('(max-width: 680px)');
+  const seatPos = () => Array.from({ length: 9 }, (_, k) => {
     const a = Math.PI / 2 + (k * 2 * Math.PI) / 9;
-    return { x: 50 + 54 * Math.cos(a), y: 50 + 62 * Math.sin(a) };
+    return narrow.matches ? { x: 50 + 42 * Math.cos(a), y: 50 + 50 * Math.sin(a) } : { x: 50 + 50 * Math.cos(a), y: 50 + 52 * Math.sin(a) };
   });
+  narrow.addEventListener('change', () => state && render());
 
   function render() {
     const s = state;
     const me = s.you >= 0 ? s.seats[s.you] : null;
     const offset = s.you >= 0 ? s.you : 0;
-    const table = document.getElementById('table');
-    table.querySelectorAll('.seat').forEach((e) => e.remove());
+    const table = $('table');
+    table.querySelectorAll('.seat, .bet').forEach((e) => e.remove());
+    const POS = seatPos();
 
     s.seats.forEach((p, i) => {
       const pos = POS[(i - offset + 9) % 9];
+      const place = (el, x, y) => { el.style.left = x + '%'; el.style.top = y + '%'; table.appendChild(el); };
       const el = document.createElement('div');
       el.className = 'seat';
-      el.style.left = pos.x + '%';
-      el.style.top = pos.y + '%';
       if (!p) {
-        el.classList.add('empty');
-        if (s.you < 0) {
-          el.innerHTML = `<button>Sit here</button>`;
-          el.querySelector('button').onclick = () => {
-            const name = nameInput.value.trim();
-            if (!name) { toast('Enter your name first'); nameInput.focus(); return; }
-            send({ type: 'sit', seat: i, name, amount: buyinInput.value });
-          };
-        }
-        table.appendChild(el);
-        return;
+        // keep the table clean: empty seats only show while you're looking for one
+        if (s.you >= 0) return;
+        el.innerHTML = `<button class="open" title="Sit here">+</button>`;
+        el.firstChild.onclick = () => openSit(i);
+        return place(el, pos.x, pos.y);
       }
+      if (p.isYou) el.classList.add('you');
       if (p.folded && s.inHand) el.classList.add('folded');
       if (s.toAct === i) el.classList.add('turn');
       if (s.winners.includes(i)) el.classList.add('winner');
       if (!p.connected) el.classList.add('offline');
-      const cards = p.cards ? p.cards.map((c) => cardEl(c)).join('') : p.hasCards ? cardEl(null, 'back') + cardEl(null, 'back') : '';
-      // bet chip sits toward the table center
-      const below = pos.y < 50;
+      const cards = p.cards ? p.cards.map((c) => cardEl(c)).join('') : p.hasCards ? cardEl(null, 'back').repeat(2) : '';
+      const tag = p.handName ? `<div class="tag">${p.handName}</div>` : p.allIn && s.inHand ? '<div class="tag allin">All in</div>' : '';
       el.innerHTML = `
         <div class="cards">${cards}</div>
-        <div class="box">
+        <div class="plate">
           ${s.dealer === i && (s.inHand || s.winners.length) ? '<div class="dealer">D</div>' : ''}
-          <div class="name">${esc(p.name)}${p.isYou ? ' (you)' : ''}</div>
-          <div class="stack">${p.stack}${p.allIn ? ' · ALL IN' : ''}</div>
-          ${p.handName ? `<div class="hand">${p.handName}</div>` : ''}
-        </div>
-        ${p.bet ? `<div class="bet" style="${below ? 'top:calc(100% + 6px)' : 'bottom:calc(100% + 6px)'}">${p.bet}</div>` : ''}`;
-      table.appendChild(el);
+          <div class="name">${esc(p.name)}</div>
+          <div class="stack">${fmt(p.stack)}</div>
+        </div>${tag}`;
+      place(el, pos.x, pos.y);
+      if (p.bet) {
+        // bets sit partway between the seat and the middle of the table
+        const b = document.createElement('div');
+        b.className = 'bet';
+        b.textContent = fmt(p.bet);
+        place(b, pos.x + (50 - pos.x) * (narrow.matches ? 0.55 : 0.38), pos.y + (50 - pos.y) * 0.42);
+      }
     });
 
     renderBoard();
-    document.getElementById('pot').textContent = s.pot ? `Pot: ${s.pot}` : '';
+    $('pot').innerHTML = s.pot ? `<small>Pot</small>${fmt(s.pot)}` : '';
     const seated = s.seats.filter(Boolean).length;
-    document.getElementById('status').textContent =
-      !s.started ? (s.isHost ? `Waiting for players · press Start when ready` : 'Waiting for host to start')
-      : !s.inHand && seated < 2 ? 'Waiting for players…' : `Blinds ${s.sb}/${s.bb}`;
+    $('status').textContent =
+      !s.started ? (s.isHost ? (seated < 2 ? 'Invite friends, then start the game' : 'Ready when you are') : 'Waiting for the host to start')
+      : !s.inHand && seated < 2 ? 'Waiting for players' : '';
+    $('blinds').textContent = `${s.sb}/${s.bb}`;
 
-    document.getElementById('startBtn').style.display = s.isHost && !s.started ? '' : 'none';
-    document.getElementById('standBtn').style.display = me ? '' : 'none';
-    document.getElementById('addBtn').style.display = me && !(s.inHand && !me.folded) ? '' : 'none';
+    $('startBtn').style.display = s.isHost && !s.started ? '' : 'none';
+    $('standBtn').style.display = me ? '' : 'none';
+    $('addBtn').style.display = me && !(s.inHand && !me.folded) ? '' : 'none';
     renderLedger();
-
     renderActions(s, me);
 
-    const log = document.getElementById('log');
+    const log = $('logList');
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-    log.innerHTML = s.log.map((l) => `<div class="${l.startsWith('—') ? 'hand' : ''}">${esc(l)}</div>`).join('');
+    log.innerHTML = s.log.map((l) => l.startsWith('—')
+      ? `<div class="hand">${esc(l.replace(/—/g, '').trim())}</div>` : `<div>${esc(l)}</div>`).join('');
     if (atBottom) log.scrollTop = log.scrollHeight;
   }
 
@@ -279,50 +377,46 @@ function init() {
     const justShown = renderBoard.prev !== undefined && shown > renderBoard.prev ? shown - 1 : -1;
     renderBoard.prev = shown;
     const slots = s.inHand || s.board.length ? 5 - shown : 0;
-    document.getElementById('board').innerHTML =
+    $('board').innerHTML =
       s.board.slice(0, shown).map((c, k) => cardEl(c, k === justShown ? 'reveal' : '')).join('') + cardEl(null, 'slot').repeat(slots);
   }
 
   let lastActionKey = '';
   function renderActions(s, me) {
-    const bar = document.getElementById('actions');
-    const key = JSON.stringify([s.toAct, s.you, s.currentBet, me?.stack, me?.bet, s.inHand]);
+    const bar = $('actions');
+    const key = JSON.stringify([s.toAct, s.you, s.currentBet, me?.stack, me?.bet, s.inHand, s.started]);
     if (key === lastActionKey) return; // don't wipe the raise input while typing
     lastActionKey = key;
     bar.innerHTML = '';
-    if (!me) { bar.innerHTML = `<span style="color:var(--muted)">Pick an empty seat to join</span>`; return; }
-    if (me.stack === 0 && !s.inHand) {
-      bar.innerHTML = `<span style="color:var(--muted)">You're out of chips. Set an amount and hit <b>Add chips</b> to keep playing.</span>`;
-      return;
-    }
-    if (s.toAct !== s.you) {
-      bar.innerHTML = `<span style="color:var(--muted)">${s.inHand ? 'Waiting for others…' : ''}</span>`;
-      return;
-    }
+    bar.classList.remove('live');
+    const hint = (t) => { bar.innerHTML = `<span class="hint">${t}</span>`; };
+    if (!me) return hint('Pick a seat to join');
+    if (me.stack === 0 && !s.inHand) return hint('Out of chips. Use “Add chips” to keep playing.');
+    if (s.toAct !== s.you) return;
+
+    bar.classList.add('live');
     const toCall = Math.min(s.currentBet - me.bet, me.stack);
     const maxTo = me.bet + me.stack;
     const minTo = Math.min(s.currentBet + s.minRaise, maxTo);
     const act = (action, amount) => send({ type: 'act', action, amount });
 
-    const fold = btn('Fold', 'danger', () => act('fold'));
-    const cc = toCall > 0 ? btn(`Call ${toCall}`, '', () => act('call')) : btn('Check', '', () => act('check'));
-    bar.append(fold, cc);
-
-    if (maxTo > s.currentBet && !(toCall >= me.stack)) {
-      const range = Object.assign(document.createElement('input'), { type: 'range', min: minTo, max: maxTo, value: minTo, step: 1 });
-      const num = Object.assign(document.createElement('input'), { type: 'number', min: minTo, max: maxTo, value: minTo });
-      range.oninput = () => num.value = range.value;
-      num.oninput = () => range.value = num.value;
-      const set = (v) => { v = Math.max(minTo, Math.min(maxTo, Math.round(v))); range.value = num.value = v; };
-      const potTo = s.currentBet + s.pot + toCall; // pot-sized raise
+    bar.append(
+      btn('Fold', 'fold', () => act('fold')),
+      toCall > 0 ? btn(`Call ${fmt(toCall)}`, 'cc', () => act('call')) : btn('Check', 'cc', () => act('check')),
+    );
+    if (maxTo > s.currentBet && toCall < me.stack) {
       const verb = s.currentBet === 0 ? 'Bet' : 'Raise to';
-      bar.append(
-        btn('½ Pot', '', () => set(s.currentBet + (s.pot + toCall) / 2)),
-        btn('Pot', '', () => set(potTo)),
-        btn('All-in', '', () => set(maxTo)),
-        range, num,
-        btn(verb, 'primary', () => act('raise', num.value)),
-      );
+      const range = Object.assign(document.createElement('input'), { type: 'range', min: minTo, max: maxTo, value: minTo, step: 1 });
+      const num = Object.assign(document.createElement('input'), { type: 'number', min: minTo, max: maxTo, value: minTo, className: 'amt' });
+      const go = btn('', 'primary go', () => act('raise', num.value));
+      const label = () => { go.textContent = Number(num.value) >= maxTo ? 'All in' : `${verb} ${fmt(num.value || 0)}`; };
+      const set = (v) => { v = Math.max(minTo, Math.min(maxTo, Math.round(v))); range.value = num.value = v; label(); };
+      range.oninput = () => { num.value = range.value; label(); };
+      num.oninput = () => { range.value = num.value; label(); };
+      label();
+      const half = s.currentBet + (s.pot + toCall) / 2, pot = s.currentBet + s.pot + toCall;
+      const sep = Object.assign(document.createElement('div'), { className: 'sep' });
+      bar.append(sep, btn('½ Pot', 'chip', () => set(half)), btn('Pot', 'chip', () => set(pot)), btn('Max', 'chip', () => set(maxTo)), range, num, go);
     }
   }
   function btn(label, cls, onclick) {
@@ -333,7 +427,7 @@ function init() {
 
   // keyboard shortcuts: f = fold, c = check/call
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || !state || state.toAct !== state.you) return;
+    if (e.target.tagName === 'INPUT' || document.querySelector('dialog[open]') || !state || state.toAct !== state.you) return;
     if (e.key === 'f') send({ type: 'act', action: 'fold' });
     if (e.key === 'c') send({ type: 'act', action: state.currentBet > state.seats[state.you].bet ? 'call' : 'check' });
   });
