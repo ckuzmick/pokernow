@@ -60,6 +60,9 @@ wss.on('connection', (ws, req) => {
       case 'addChips': err = game.addChips(pid, msg.amount); break;
       case 'start': if (room.host === pid) game.start(); break;
       case 'act': err = game.act(pid, msg.action, msg.amount); break;
+      case 'redeal': err = game.redeal(pid); break;
+      case 'mode': if (room.host === pid) game.setMode(msg.mode); break;
+      case 'ante': if (room.host === pid) err = game.setAnte(msg.amount); break;
     }
     if (err) ws.send(JSON.stringify({ type: 'error', error: err }));
     broadcast(room);

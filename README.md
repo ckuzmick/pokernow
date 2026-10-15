@@ -15,3 +15,12 @@ npm start   # http://localhost:3000
 - Disconnected players auto-check/fold
 - Folding with nothing to call counts as a check
 - Keyboard: `f` fold, `c` check/call
+
+## Chicken Poker
+
+The host can switch the table to Chicken Poker from **Game** (takes effect next hand; same ledger as Hold'em).
+
+- Everyone antes (host sets the amount, default 100) and gets 2 cards
+- A 15-second clock starts. Press **Space** (or tap **Redeal**) to redeal every hand at the table; the clock restarts
+- Each player can force one redeal per hand
+- When the clock runs out, or nobody has a redeal left, all cards flip face up and the board runs out. Best hand takes the pot

@@ -88,6 +88,24 @@
   .bet { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
   .bet::before { content: ''; width: 12px; height: 12px; border-radius: 50%; background: #e8e3d6; box-shadow: inset 0 0 0 2px #b8ad95; }
 
+  /* chicken clock */
+  #clock { display: none; position: relative; width: 112px; height: 112px; }
+  #clock svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+  #clock circle { fill: none; stroke-width: 4; }
+  #clock .track { stroke: #ffffff14; }
+  #clock .arc { stroke: var(--text); stroke-linecap: round; transition: stroke .3s; }
+  #clock.low .arc { stroke: var(--loss); }
+  #clock .num { position: absolute; inset: 0; display: grid; place-items: center; font-size: 38px; font-weight: 600; letter-spacing: -.02em; }
+  #clock.low .num { color: var(--loss); }
+  #chickenHint { display: none; color: var(--muted); font-size: 13px; }
+  #chickenHint kbd { font: inherit; font-size: 11px; font-weight: 600; color: var(--text); padding: 2px 7px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--line-2); margin: 0 2px; }
+  .tag.used { color: var(--muted); }
+  .seg { display: flex; padding: 3px; border-radius: 10px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-2); }
+  .seg label { flex: 1; margin: 0; text-align: center; padding: 8px; border-radius: 7px; font-size: 13.5px; color: var(--muted); cursor: pointer; }
+  .seg input { display: none; }
+  .seg label:has(input:checked) { background: var(--surface-2); color: var(--text); }
+  dialog .note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+
   /* action dock */
   #dock { min-height: 92px; display: flex; justify-content: center; align-items: center; padding: 0 16px 24px; }
   #actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
@@ -124,7 +142,7 @@
   #logList { flex: 1; overflow-y: auto; padding: 8px 16px 16px; font-size: 12.5px; color: #c3c7cc; }
   #logList div { padding: 3px 0; }
   #logList div.hand { color: var(--muted); font-weight: 600; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
-  #toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%) translateY(8px); background: var(--text); color: #111;
+  #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%) translateY(-8px); background: var(--text); color: #111;
     font-weight: 500; padding: 8px 16px; border-radius: 999px; opacity: 0; pointer-events: none; transition: .2s; z-index: 10; }
   #toast.show { opacity: 1; transform: translateX(-50%); }
 
@@ -164,6 +182,7 @@
   <header>
     <div class="brand">Poker Later<span id="blinds"></span></div>
     <button id="startBtn" class="primary" style="display:none;margin-right:6px">Start game</button>
+    <button id="settingsBtn" class="ghost" style="display:none">Game</button>
     <button id="copy" class="ghost">Invite</button>
     <button id="ledgerBtn" class="ghost">Ledger</button>
     <button id="logBtn" class="ghost">Log</button>
@@ -172,7 +191,10 @@
   </header>
   <div id="stage">
     <div id="table">
-      <div id="center"><div id="board" class="cards"></div><div id="pot"></div><div id="status"></div></div>
+      <div id="center">
+        <div id="clock"><svg viewBox="0 0 112 112"><circle class="track" cx="56" cy="56" r="52"/><circle class="arc" cx="56" cy="56" r="52"/></svg><div class="num"></div></div>
+        <div id="board" class="cards"></div><div id="pot"></div><div id="chickenHint"></div><div id="status"></div>
+      </div>
     </div>
   </div>
   <div id="dock"><div id="actions"></div></div>
@@ -200,6 +222,19 @@
   </form>
 </dialog>
 
+<dialog id="settingsDlg">
+  <form method="dialog">
+    <h2>Game</h2>
+    <div class="field seg">
+      <label><input type="radio" name="mode" value="holdem">Hold'em</label>
+      <label><input type="radio" name="mode" value="chicken">Chicken Poker</label>
+    </div>
+    <div class="field"><label for="anteAmt">Chicken ante</label><input id="anteAmt" type="number" min="1">
+      <p class="note">Everyone antes, then a 15-second clock. Anyone can force one redeal for the whole table. When the clock runs out, all cards flip up and the board runs out. Changes apply next hand.</p></div>
+    <div class="row"><button value="cancel" formnovalidate class="ghost">Cancel</button><button value="ok" class="primary">Save</button></div>
+  </form>
+</dialog>
+
 <dialog id="ledgerDlg">
   <h2>Ledger</h2>
   <table><thead><tr><th>Player</th><th>Buy-in</th><th>Buy-out</th><th>Stack</th><th>Net</th></tr></thead>
@@ -221,14 +256,24 @@ function init() {
   let pid = store.get('pid');
   if (!pid) { pid = crypto.randomUUID(); store.set('pid', pid); }
 
-  let ws, state;
+  let ws, state, redealFlash = false, dealtFlash = false, clockEnd = 0;
   const send = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/ws?room=${roomId}&pid=${pid}`);
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
-      if (m.type === 'state') { state = m.state; render(); }
+      if (m.type === 'state') {
+        const prev = state;
+        state = m.state;
+        if (state.chicken && prev?.chicken && state.chicken.redeals > prev.chicken.redeals) {
+          redealFlash = true;
+          toast(`${state.chicken.lastRedealBy} redealt`);
+        }
+        if (state.chicken && !prev?.chicken) dealtFlash = true;
+        if (state.chicken) clockEnd = performance.now() + state.chicken.msLeft;
+        render();
+      }
       if (m.type === 'error') toast(m.error);
     };
     ws.onclose = () => setTimeout(connect, 1000);
@@ -270,6 +315,17 @@ function init() {
   $('addBtn').onclick = () => { $('addAmt').value = store.get('buyin', 1000); $('addDlg').showModal(); };
   $('addDlg').addEventListener('close', () => {
     if ($('addDlg').returnValue === 'ok') send({ type: 'addChips', amount: $('addAmt').value });
+  });
+
+  $('settingsBtn').onclick = () => {
+    $('settingsDlg').querySelector(`input[value="${state.nextMode}"]`).checked = true;
+    $('anteAmt').value = state.ante;
+    $('settingsDlg').showModal();
+  };
+  $('settingsDlg').addEventListener('close', () => {
+    if ($('settingsDlg').returnValue !== 'ok') return;
+    if (Number($('anteAmt').value) !== state.ante) send({ type: 'ante', amount: $('anteAmt').value });
+    send({ type: 'mode', mode: $('settingsDlg').querySelector('input[name=mode]:checked').value });
   });
 
   function renderLedger() {
@@ -326,8 +382,11 @@ function init() {
       if (s.toAct === i) el.classList.add('turn');
       if (s.winners.includes(i)) el.classList.add('winner');
       if (!p.connected) el.classList.add('offline');
-      const cards = p.cards ? p.cards.map((c) => cardEl(c)).join('') : p.hasCards ? cardEl(null, 'back').repeat(2) : '';
-      const tag = p.handName ? `<div class="tag">${p.handName}</div>` : p.allIn && s.inHand ? '<div class="tag allin">All in</div>' : '';
+      const flip = p.cards && (redealFlash || (p.isYou && dealtFlash)) ? 'reveal' : '';
+      const cards = p.cards ? p.cards.map((c) => cardEl(c, flip)).join('') : p.hasCards ? cardEl(null, 'back').repeat(2) : '';
+      const tag = p.handName ? `<div class="tag">${p.handName}</div>`
+        : s.chicken && p.redealt ? '<div class="tag used">Redealt</div>'
+        : p.allIn && s.inHand && !s.chicken ? '<div class="tag allin">All in</div>' : '';
       el.innerHTML = `
         <div class="cards">${cards}</div>
         <div class="plate">
@@ -345,13 +404,17 @@ function init() {
       }
     });
 
+    redealFlash = dealtFlash = false;
     renderBoard();
+    renderClock(s, me);
     $('pot').innerHTML = s.pot ? `<small>Pot</small>${fmt(s.pot)}` : '';
     const seated = s.seats.filter(Boolean).length;
     $('status').textContent =
       !s.started ? (s.isHost ? (seated < 2 ? 'Invite friends, then start the game' : 'Ready when you are') : 'Waiting for the host to start')
       : !s.inHand && seated < 2 ? 'Waiting for players' : '';
-    $('blinds').textContent = `${s.sb}/${s.bb}`;
+    $('blinds').textContent = (s.mode === 'chicken' ? `Chicken · ante ${fmt(s.ante)}` : `Hold'em · ${s.sb}/${s.bb}`)
+      + (s.nextMode !== s.mode ? ` → ${s.nextMode === 'chicken' ? 'Chicken' : "Hold'em"} next` : '');
+    $('settingsBtn').style.display = s.isHost ? '' : 'none';
 
     $('startBtn').style.display = s.isHost && !s.started ? '' : 'none';
     $('standBtn').style.display = me ? '' : 'none';
@@ -364,6 +427,35 @@ function init() {
     log.innerHTML = s.log.map((l) => l.startsWith('—')
       ? `<div class="hand">${esc(l.replace(/—/g, '').trim())}</div>` : `<div>${esc(l)}</div>`).join('');
     if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+
+  const CIRC = 2 * Math.PI * 52;
+  let clockRaf = null;
+  function renderClock(s, me) {
+    const on = !!s.chicken;
+    $('clock').style.display = on ? 'block' : 'none';
+    $('board').style.display = on ? 'none' : '';
+    const hint = $('chickenHint');
+    hint.style.display = on ? 'block' : 'none';
+    if (on) {
+      const eligible = me && !me.folded && me.hasCards;
+      const left = s.seats.filter((p) => p && p.hasCards && !p.redealt).length;
+      hint.innerHTML = !eligible ? `${left} ${left === 1 ? 'player' : 'players'} can still redeal`
+        : me.redealt ? `Redeal used · ${left} left` : `Press <kbd>Space</kbd> to redeal`;
+    }
+    cancelAnimationFrame(clockRaf);
+    if (!on) return;
+    const tick = () => {
+      const ms = Math.max(0, clockEnd - performance.now());
+      const total = s.chicken.total;
+      $('clock').querySelector('.num').textContent = Math.ceil(ms / 1000);
+      $('clock').classList.toggle('low', ms < 5000);
+      const arc = $('clock').querySelector('.arc');
+      arc.style.strokeDasharray = CIRC;
+      arc.style.strokeDashoffset = CIRC * (1 - ms / total);
+      if (ms > 0) clockRaf = requestAnimationFrame(tick);
+    };
+    tick();
   }
 
   // board cards flip in one at a time, even when the flop lands all at once
@@ -384,7 +476,7 @@ function init() {
   let lastActionKey = '';
   function renderActions(s, me) {
     const bar = $('actions');
-    const key = JSON.stringify([s.toAct, s.you, s.currentBet, me?.stack, me?.bet, s.inHand, s.started]);
+    const key = JSON.stringify([s.toAct, s.you, s.currentBet, me?.stack, me?.bet, s.inHand, s.started, !!s.chicken, me?.redealt]);
     if (key === lastActionKey) return; // don't wipe the raise input while typing
     lastActionKey = key;
     bar.innerHTML = '';
@@ -392,6 +484,11 @@ function init() {
     const hint = (t) => { bar.innerHTML = `<span class="hint">${t}</span>`; };
     if (!me) return hint('Pick a seat to join');
     if (me.stack === 0 && !s.inHand) return hint('Out of chips. Use “Add chips” to keep playing.');
+    if (s.chicken) {
+      if (!me.hasCards || me.redealt) return;
+      bar.classList.add('live');
+      return bar.append(btn('Redeal', 'primary go', () => send({ type: 'redeal' })));
+    }
     if (s.toAct !== s.you) return;
 
     bar.classList.add('live');
@@ -427,7 +524,9 @@ function init() {
 
   // keyboard shortcuts: f = fold, c = check/call
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || document.querySelector('dialog[open]') || !state || state.toAct !== state.you) return;
+    if (e.target.tagName === 'INPUT' || document.querySelector('dialog[open]') || !state) return;
+    if (e.code === 'Space' && state.chicken) { e.preventDefault(); return send({ type: 'redeal' }); }
+    if (state.toAct !== state.you) return;
     if (e.key === 'f') send({ type: 'act', action: 'fold' });
     if (e.key === 'c') send({ type: 'act', action: state.currentBet > state.seats[state.you].bet ? 'call' : 'check' });
   });

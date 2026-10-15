@@ -64,7 +64,7 @@ export function bestHand(cards) {
 
 // ---- game
 export class Game {
-  constructor({ startingStack = 1000, sb = 10, bb = 20, runoutDelay = 2200 } = {}) {
+  constructor({ startingStack = 1000, sb = 10, bb = 20, runoutDelay = 2200, chickenTime = 15000 } = {}) {
     this.seats = Array(SEATS).fill(null);
     this.startingStack = startingStack;
     this.sb = sb;
@@ -81,6 +81,27 @@ export class Game {
     this.runoutDelay = runoutDelay; // ms between streets when everyone is all-in
     this.runoutTimer = null;
     this.ledger = new Map(); // id -> { name, buyIn, buyOut }
+    // 'holdem' or 'chicken'; switching takes effect at the next hand
+    this.mode = 'holdem';
+    this.nextMode = 'holdem';
+    this.ante = 100;
+    this.chickenTime = chickenTime;
+    this.chickenTimer = null;
+  }
+
+  setMode(mode) {
+    if (!['holdem', 'chicken'].includes(mode) || mode === this.nextMode) return;
+    this.nextMode = mode;
+    const label = mode === 'chicken' ? 'Chicken Poker' : "Hold'em";
+    this.say(this.inHand ? `Switching to ${label} next hand` : `Game switched to ${label}`);
+    if (!this.inHand) this.mode = mode;
+  }
+
+  setAnte(amount) {
+    const a = Math.floor(Number(amount));
+    if (!(a > 0 && a <= 1e9)) return 'Enter a valid ante';
+    this.ante = a;
+    this.say(`Chicken ante set to ${a}`);
   }
 
   addBuyIn(id, name, amt) {
@@ -121,7 +142,7 @@ export class Game {
       p.foldedAt = ++this.foldCount;
       this.say(`${p.name} folds`);
       if (this.toAct === i) this.advance();
-      else this.checkEnd();
+      else if (!this.checkEnd() && this.street === 'chicken' && !this.seats.some(q => q && !q.folded && !q.redealt)) this.flipChicken();
     }
     // a mid-hand leaver can still win an orphaned side pot, so cash out when the hand ends
     if (this.inHand) p.leaving = true;
@@ -185,11 +206,14 @@ export class Game {
     this.board = [];
     this.foldCount = 0;
     this.deck = newDeck();
+    this.mode = this.nextMode;
+    this.faceUp = false;
     for (const p of this.seats) if (p) {
-      Object.assign(p, { cards: [], bet: 0, total: 0, acted: false, allIn: false, folded: p.stack <= 0, foldedAt: 0 });
+      Object.assign(p, { cards: [], bet: 0, total: 0, acted: false, allIn: false, folded: p.stack <= 0, foldedAt: 0, redealt: false });
     }
     const live = (p) => !p.folded;
     this.dealer = this.nextSeat(this.dealer, live);
+    if (this.mode === 'chicken') return this.startChicken();
     const n = this.seats.filter(p => p && live(p)).length;
     let sbSeat, bbSeat;
     if (n === 2) { sbSeat = this.dealer; bbSeat = this.nextSeat(sbSeat, live); }
@@ -205,6 +229,53 @@ export class Game {
     this.toAct = this.nextSeat(bbSeat, p => !p.folded && !p.allIn);
     if (this.canActCount() === 0 || (this.canActCount() === 1 && this.seats[this.toAct].bet >= this.currentBet)) this.runOut();
     else this.skipDisconnected();
+  }
+
+  // ---- chicken poker: everyone antes, then a shot clock. Any player may
+  // force a full redeal once. When the clock runs out (or nobody has a
+  // redeal left), all hands flip face up and the board runs out.
+  startChicken() {
+    this.say(`— Hand #${this.handNo} · Chicken Poker — ante ${this.ante}`);
+    this.seats.forEach((p, i) => p && !p.folded && this.post(i, this.ante));
+    for (const p of this.seats) if (p) p.bet = 0; // antes go straight to the pot
+    this.street = 'chicken';
+    this.toAct = -1;
+    this.currentBet = 0;
+    this.redeals = 0;
+    this.lastRedealBy = null;
+    this.dealHoles();
+  }
+
+  dealHoles() {
+    this.deck = newDeck();
+    for (const p of this.seats) if (p && !p.folded) p.cards = [this.deck.pop(), this.deck.pop()];
+    clearTimeout(this.chickenTimer);
+    if (!this.seats.some(p => p && !p.folded && !p.redealt)) return this.flipChicken();
+    this.chickenDeadline = Date.now() + this.chickenTime;
+    this.chickenTimer = setTimeout(() => { this.flipChicken(); this.onChange(); }, this.chickenTime);
+  }
+
+  redeal(id) {
+    if (!this.inHand || this.street !== 'chicken') return 'Nothing to redeal';
+    const p = this.seats[this.seatOf(id)];
+    if (!p || p.folded) return 'You are not in this hand';
+    if (p.redealt) return 'You already used your redeal';
+    p.redealt = true;
+    this.redeals++;
+    this.lastRedealBy = p.name;
+    this.say(`${p.name} redeals!`);
+    this.dealHoles();
+  }
+
+  flipChicken() {
+    clearTimeout(this.chickenTimer);
+    this.chickenTimer = null;
+    if (!this.inHand || this.street !== 'chicken') return;
+    this.faceUp = true;
+    this.say('Cards up');
+    for (const p of this.seats) if (p && !p.folded) this.say(`${p.name}: ${p.cards.join(' ')}`);
+    this.street = 'preflop';
+    this.runOut();
   }
 
   post(i, amt) {
@@ -316,7 +387,8 @@ export class Game {
 
   finish() {
     clearTimeout(this.runoutTimer);
-    this.runoutTimer = null;
+    clearTimeout(this.chickenTimer);
+    this.runoutTimer = this.chickenTimer = null;
     this.toAct = -1;
     const players = this.seats.map((p, i) => p && { p, i }).filter(Boolean);
     const live = players.filter(x => !x.p.folded);
@@ -380,7 +452,8 @@ export class Game {
         name: p.name, stack: p.stack, bet: p.bet, folded: p.folded, allIn: p.allIn,
         connected: p.connected, isYou: p.id === viewerId,
         hasCards: p.cards.length > 0 && !p.folded,
-        cards: p.id === viewerId || (this.showdown && this.showdown[i]) ? p.cards : null,
+        cards: p.id === viewerId || (this.faceUp && !p.folded) || (this.showdown && this.showdown[i]) ? p.cards : null,
+        redealt: !!p.redealt,
         handName: this.showdown?.[i]?.handName ?? null,
       }),
       board: this.board,
@@ -393,6 +466,10 @@ export class Game {
       minRaise: this.minRaise || this.bb,
       winners: this.inHand ? [] : this.winners || [],
       sb: this.sb, bb: this.bb,
+      mode: this.mode, nextMode: this.nextMode, ante: this.ante,
+      chicken: this.inHand && this.street === 'chicken'
+        ? { msLeft: Math.max(0, this.chickenDeadline - Date.now()), total: this.chickenTime, redeals: this.redeals, lastRedealBy: this.lastRedealBy }
+        : null,
       log: this.log.slice(-40),
       you: this.seats.findIndex(p => p && p.id === viewerId && !p.leaving),
       ledger: [...this.ledger.entries()].map(([id, e]) => {
